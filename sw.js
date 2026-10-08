@@ -4,6 +4,10 @@
 // DEBE COINCIDIR con APP_VERSION en index.html
 const APP_VERSION = '2.12.0';
 const CACHE_NAME = 'gestor-permisos-v' + APP_VERSION.replace(/\./g, '-');
+// Familia de cachés de ESTA app. Cache Storage es compartido por todo el
+// origen (todas las PWAs de iesvilladiego.github.io), por lo que al limpiar
+// solo deben borrarse las cachés de la propia familia, nunca las ajenas.
+const CACHE_FAMILY = 'gestor-permisos-';
 
 // Recursos a pre-cachear durante la instalación
 const PRECACHE_URLS = [
@@ -62,10 +66,13 @@ self.addEventListener('activate', (event) => {
 
     event.waitUntil(
         caches.keys().then((cacheNames) => {
+            // IMPORTANTE: solo borrar cachés de versiones anteriores de ESTA app
+            // (familia 'gestor-permisos-'). Nunca tocar las cachés del portal ni
+            // de otras PWAs del mismo origen (portal-ies-*, ace-villadiego-*, etc.)
             const deletePromises = cacheNames
-                .filter((name) => name !== CACHE_NAME)
+                .filter((name) => name !== CACHE_NAME && name.startsWith(CACHE_FAMILY))
                 .map((name) => {
-                    console.log('[SW] Eliminando caché antigua:', name);
+                    console.log('[SW] Eliminando caché antigua propia:', name);
                     return caches.delete(name);
                 });
 
