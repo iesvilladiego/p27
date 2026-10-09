@@ -622,7 +622,61 @@
             .tab-btn div span { display: none; }
         }
 
-    </style>
+        /* ── Chip de versión "viva" del Service Worker ── */
+        .app-version-chip {
+            display: inline-flex;
+            align-items: center;
+            font-size: 0.65rem;
+            font-weight: 600;
+            line-height: 1;
+            padding: 0.25rem 0.55rem;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.18);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            letter-spacing: 0.02em;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            user-select: none;
+            white-space: nowrap;
+            text-transform: none;
+        }
+        .app-version-chip::before {
+            content: "";
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #4ade80;
+            margin-right: 0.35rem;
+            box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);
+            animation: app-version-pulse 2s infinite;
+        }
+        .app-version-chip.is-stale::before {
+            background: #fbbf24;
+            animation: none;
+        }
+        .app-version-chip.is-error::before {
+            background: #f87171;
+            animation: none;
+        }
+        .app-version-chip.is-loading::before {
+            background: rgba(255, 255, 255, 0.7);
+            animation: none;
+        }
+        @keyframes app-version-pulse {
+            0%   { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7); }
+            70%  { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+        }
+        @media (max-width: 575.98px) {
+            .app-version-chip {
+                font-size: 0.58rem;
+                padding: 0.2rem 0.45rem;
+            }
+            header h1 .app-version-chip { display: none !important; }
+        }
+
+    </style></style>
 </head>
 <body class="d-flex flex-column min-vh-100">
 
@@ -715,7 +769,7 @@
         <div class="container-custom d-flex justify-content-between align-items-center">
             <div class="d-flex align-items-center gap-3">
                 <h1 class="h4 fw-bold mb-0 d-flex align-items-center gap-2">
-                    <i data-lucide="calendar"></i> Gestión de Asuntos Propios
+                    <i data-lucide="calendar"></i> Gestión de Asuntos Propios <span id="app-version-chip" class="app-version-chip is-loading" title="Versión del Service Worker activo" aria-label="Versión del Service Worker activo">v…</span>
             </div>
             <div id="auth-status" class="d-flex align-items-center gap-2">
                 <span id="user-info-badge" class="badge bg-success font-monospace px-3 py-2 fw-normal hidden"></span>
@@ -1992,6 +2046,122 @@
             }
         }
     });
+
+    // ================================================
+    // CHIP DE VERSIÓN "VIVA" DEL SERVICE WORKER
+    // Muestra junto al título la versión que reporta el
+    // Service Worker activo (no la constante APP_VERSION
+    // hardcodeada en index.html, sino la real del sw.js).
+    // ================================================
+    (function setupVersionChip() {
+        const chip = document.getElementById('app-version-chip');
+        if (!chip) {
+            console.warn('[VersionChip] No se encontró #app-version-chip');
+            return;
+        }
+
+        // Valor inicial: constante local (para que el usuario vea algo
+        // incluso antes de que el SW responda o si el SW está caído).
+        function setChip(version, state) {
+            chip.textContent = 'v' + (version || '?');
+            chip.classList.remove('is-loading', 'is-stale', 'is-error');
+            if (state) chip.classList.add(state);
+            chip.setAttribute('data-version', version || '');
+        }
+
+        // Sembrar con APP_VERSION (constante local) como fallback
+        try { setChip(APP_VERSION, 'is-loading'); } catch (e) { setChip('?', 'is-loading'); }
+
+        // Si no hay SW disponible (navegador sin soporte o registro
+        // fallido), mostrar la versión local en estado "stale" para
+        // indicar que no es la versión viva del SW.
+        if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+            // Reintentar un poco más tarde por si el SW aún se está registrando
+            let retries = 0;
+            const iv = setInterval(() => {
+                if (navigator.serviceWorker.controller || retries > 10) {
+                    clearInterval(iv);
+                    if (!navigator.serviceWorker.controller) {
+                        setChip(APP_VERSION, 'is-stale');
+                        console.warn('[VersionChip] No hay SW controller; usando versión local como fallback');
+                    }
+                }
+                retries++;
+            }, 300);
+        }
+
+        // Enviar GET_VERSION al SW activo
+        function requestVersionFromSW() {
+            if (!navigator.serviceWorker.controller) return;
+            try {
+                navigator.serviceWorker.controller.postMessage({ type: 'GET_VERSION' });
+            } catch (e) {
+                console.warn('[VersionChip] Error enviando GET_VERSION:', e);
+                setChip(APP_VERSION, 'is-error');
+            }
+        }
+
+        // Timeout de seguridad: si el SW no responde en 4s, marcamos error
+        // pero seguimos mostrando la versión local.
+        let watchdog = null;
+        function armWatchdog() {
+            if (watchdog) clearTimeout(watchdog);
+            watchdog = setTimeout(() => {
+                if (chip.classList.contains('is-loading')) {
+                    console.warn('[VersionChip] El SW no respondió a tiempo; usando versión local');
+                    setChip(APP_VERSION, 'is-stale');
+                }
+            }, 4000);
+        }
+
+        // Escuchar la respuesta VERSION_INFO del SW
+        navigator.serviceWorker.addEventListener('message', function (event) {
+            if (!event.data) return;
+            if (event.data.type === 'VERSION_INFO' && event.data.version) {
+                if (watchdog) clearTimeout(watchdog);
+                const swVersion = event.data.version;
+                const localVersion = (typeof APP_VERSION !== 'undefined') ? APP_VERSION : null;
+                // Si la versión del SW difiere de la local, marcar stale
+                const state = (localVersion && swVersion !== localVersion) ? 'is-stale' : null;
+                setChip(swVersion, state);
+                console.log('[VersionChip] Versión viva del SW:', swVersion);
+            }
+            // Cuando el SW avisa que se actualizó, refrescar la versión
+            if (event.data.type === 'SW_UPDATED' && event.data.version) {
+                if (watchdog) clearTimeout(watchdog);
+                setChip(event.data.version, 'is-stale');
+                console.log('[VersionChip] SW actualizado a:', event.data.version);
+            }
+        });
+
+        // Disparar consulta en cuanto haya controller
+        if (navigator.serviceWorker.controller) {
+            requestVersionFromSW();
+            armWatchdog();
+        } else {
+            // Esperar a que el SW tome el control
+            navigator.serviceWorker.addEventListener('controllerchange', function () {
+                requestVersionFromSW();
+                armWatchdog();
+            });
+        }
+
+        // Re-preguntar la versión al volver la app a primer plano
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) {
+                requestVersionFromSW();
+                armWatchdog();
+            }
+        });
+
+        // Y también periódicamente, por si cambia sin recargar
+        setInterval(() => {
+            if (!document.hidden) {
+                requestVersionFromSW();
+                armWatchdog();
+            }
+        }, 60 * 1000); // cada 60s
+    })();
 </script>
 
     <script>
