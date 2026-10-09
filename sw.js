@@ -2,7 +2,7 @@
 // SERVICE WORKER — Gestor de Asuntos Propios
 // ================================================
 // DEBE COINCIDIR con APP_VERSION en index.html
-const APP_VERSION = '2.13.0';
+const APP_VERSION = '2.14.0';
 const CACHE_NAME = 'gestor-permisos-v' + APP_VERSION.replace(/\./g, '-');
 // Familia de cachés de ESTA app. Cache Storage es compartido por todo el
 // origen (todas las PWAs de iesvilladiego.github.io), por lo que al limpiar
