@@ -1866,8 +1866,11 @@
         // Escuchar mensajes del Service Worker
         navigator.serviceWorker.addEventListener('message', event => {
             if (event.data && event.data.type === 'SW_UPDATED') {
-                console.log('🔄 Service Worker actualizado a versión:', event.data.version);
-                showReloadNotification();
+                // El nuevo SW ya se auto-activa en install (skipWaiting).
+                // La notificación amarilla de showUpdateNotification() ya
+                // está visible con el botón "Actualizar ahora" — no hace
+                // falta una segunda alerta. Solo registramos el evento.
+                console.log('[PWA] SW activado a versión:', event.data.version, '(notificación silenciada para evitar duplicado)');
             }
             
             if (event.data && event.data.type === 'CACHE_UPDATED') {
@@ -1933,24 +1936,8 @@
         }, 30000);
     }
     
-    function showReloadNotification() {
-        const notification = document.createElement('div');
-        notification.id = 'pwa-reload-notification';
-        notification.innerHTML = `
-            <div class="alert alert-info alert-dismissible fade show shadow-lg" role="alert" 
-                 style="position: fixed; top: 80px; right: 20px; z-index: 9999; max-width: 350px;">
-                <div class="d-flex align-items-center">
-                    <i data-lucide="check-circle" class="me-2 text-success" style="width: 20px; height: 20px;"></i>
-                    <strong class="me-auto">Actualización lista</strong>
-                    <button type="button" class="btn-close btn-sm" onclick="this.parentElement.parentElement.parentElement.remove()"></button>
-                </div>
-                <p class="mb-0 mt-1 small">La aplicación se ha actualizado. <a href="javascript:location.reload()" class="alert-link">Recargar</a> para aplicar cambios.</p>
-            </div>
-        `;
-        
-        document.body.appendChild(notification);
-        lucide.createIcons();
-    }
+    // (Eliminado) showReloadNotification() — mecanismo duplicado,
+    // ahora solo se usa showUpdateNotification() con botón 'Actualizar ahora'.
 
     // ================================================
     // FUNCIONES GLOBALES PARA ACTUALIZACIÓN
